@@ -1,0 +1,52 @@
+name: preview
+
+# Builds the preview of rig's /digest/2026-10-28 and deploys it to Pages. The HTML is made in the
+# run and handed to Pages as an artifact, never committed: a page in git history keeps its marker.
+on:
+  workflow_dispatch:
+    inputs:
+      marker:
+        description: Carry the lane marker (off = banner reads "no marker set")
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          repository: BNewman73/rig-handover
+          ref: main
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - run: npm install --no-package-lock --no-fund --no-audit
+      - name: Save /digest/2026-10-28
+        env:
+          LANE_MARKER: ${{ inputs.marker && secrets.LANE_MARKER || '' }}
+          PORT: 8787
+        run: |
+          npx tsx src/server.ts &
+          for i in $(seq 1 30); do curl -sf localhost:8787/health >/dev/null && break; sleep 1; done
+          mkdir -p site
+          curl -sf localhost:8787/digest/2026-10-28 -o site/index.html
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: site
+          retention-days: 1
+      - id: deploy
+        uses: actions/deploy-pages@v4
